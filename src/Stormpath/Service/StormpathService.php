@@ -7,43 +7,83 @@
 
 namespace Stormpath\Service;
 
+use Stormpath\Persistence\ResourceManager;
+use Stormpath\Http\Client\Adapter\Digest;
+use Stormpath\Http\Client\Adapter\Basic;
+use Zend\Http\Client as HttpClient;
+use Zend\Json\Json;
 use Stormpath\Client\ApiKey;
-use Stormpath\Client\Client;
+use Zend\Cache\Storage\StorageInterface;
+use Zend\Cache\StorageFactory;
+use Zend\Config\Reader\Ini as ConfigReader;
 
 class StormpathService
 {
-    const BASEURI = 'https://api.stormpath.com/v1/';
+    private static $apiKey;
+    private static $httpClient;
+    private static $cache;
+    private static $baseUrl = 'https://api.stormpath.com/v1';
 
-    public function register($name, $description = '', $status = 'enabled')
+    public static function getBaseUrl()
     {
-        switch ($status) {
-            case 'enabled':
-            case 'disabled':
-                break;
-            default:
-                throw new \Exception('Invalid application status');
-        }
-
-        $client = self::getHttpClient();
-        $client->setUri(self::BASEURI . '/applications');
-        $client->setMethod('POST');
-        $client->setRawBody(Json::encode(array(
-            'name' => $name,
-            'description' => $description,
-            'status' => $status,
-        )));
-
-
-        return Json::decode($client->send()->getBody());
+        return self::$baseUrl;
     }
 
-    /*public function InstantiateClient($accessId, $secret, $baseURL)
+    public static function getHttpClient()
     {
-        $apikey = new ApiKey($accessId,$secret);
-		//$apikey = array('id' => $accessId , 'secret' => $secret);
-		return new Client($apikey, $baseURL);
+        return self::$httpClient;
     }
-	*/
 
+    public static function setHttpClient(HttpClient $value)
+    {
+        $value->setOptions(array('sslverifypeer' => false));
+        self::$httpClient = $value;
+    }
 
+    public static function getApiKey()
+    {
+        return self::$apiKey;
+    }
+
+    public static function setApiKey(ApiKey $apiKey)
+    {
+        self::$apiKey = $apiKey;
+    }
+
+    public static function getCache()
+    {
+        return self::$cache;
+    }
+
+    public static function setCache(StorageInterface $cache)
+    {
+        self::$cache = $cache;
+    }
+
+    public static function configure($id, $secret)
+    {
+        // Set default API key; overwriteable after configuration
+        $apiKey = new ApiKey;
+        $apiKey->setId($id);
+        $apiKey->setSecret($secret);
+        self::setApiKey($apiKey);
+
+        // Set default HTTP client; overwriteable after configuration
+        $client = new HttpClient(null, array('keepalive' => true));
+        $adapter = new Basic();
+        $client->setAdapter($adapter);
+        self::setHttpClient($client);
+
+        // Set default cache adapter; overwriteable after configuration
+        self::setCache(StorageFactory::adapterFactory('memory'));
+    }
+
+    public static function getResourceManager()
+    {
+        $resourceManager = new ResourceManager();
+        $resourceManager->setHttpClient(self::getHttpClient());
+        $resourceManager->setCache(self::getCache());
+
+        return $resourceManager;
+    }
 }
